@@ -84,7 +84,7 @@ export const getFeaturedItems = async (req: Request, res: Response): Promise<voi
 // Public/Private: Get single item by ID
 export const getMenuItemById = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       res.status(404).json({ success: false, message: 'Invalid menu item ID.' });
