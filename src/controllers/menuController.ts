@@ -353,6 +353,22 @@ export const updateMenuItem = async (req: AuthRequest, res: Response): Promise<v
       if (item.status === 'approved' && status === 'inactive') {
         item.status = 'inactive';
       } else if (item.status === 'inactive' && status === 'approved') {
+        if (req.user.subscriptionPlan !== 'premium') {
+          const activeCount = await MenuItem.countDocuments({
+            vendorId: req.user._id,
+            status: { $in: ['approved', 'pending'] },
+            _id: { $ne: item._id },
+          });
+
+          if (activeCount >= 3) {
+            res.status(403).json({
+              success: false,
+              code: 'UPGRADE_REQUIRED',
+              message: 'Free plan limit reached! You can publish up to 3 active menu items. Please upgrade to Premium for unlimited items.',
+            });
+            return;
+          }
+        }
         item.status = 'approved';
       }
     }
