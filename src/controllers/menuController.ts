@@ -201,11 +201,17 @@ export const getFeaturedItems = async (req: Request, res: Response): Promise<voi
     const items = await MenuItem.find({ status: 'approved' })
       .populate('vendorId', 'name businessName image subscriptionPlan')
       .sort({ averageRating: -1, createdAt: -1 })
-      .limit(6);
+      .limit(30);
+
+    const sortedItems = [...items].sort((a, b) => {
+      const aPremium = (a.vendorId as any)?.subscriptionPlan === 'premium' ? 1 : 0;
+      const bPremium = (b.vendorId as any)?.subscriptionPlan === 'premium' ? 1 : 0;
+      return bPremium - aPremium;
+    });
 
     res.status(200).json({
       success: true,
-      data: items,
+      data: sortedItems.slice(0, 6),
     });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
