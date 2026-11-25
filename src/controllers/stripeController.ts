@@ -8,7 +8,7 @@ const stripeSecretKey = process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder_ke
 const stripe = new Stripe(stripeSecretKey);
 
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:3000';
-const WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_placeholder';
+const WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 
 // Create Stripe Checkout Session for Vendor Premium Upgrade ($29.99/mo or one-time premium lifetime)
 export const createCheckoutSession = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -72,105 +72,71 @@ export const createCheckoutSession = async (req: AuthRequest, res: Response): Pr
 // Webhook Handler: Activates premium ONLY after verified Stripe webhook event
 export const handleWebhook = async (req: Request, res: Response): Promise<void> => {
   const sig = req.headers['stripe-signature'];
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
   let event: Stripe.Event;
 
   try {
-    if (!sig || !WEBHOOK_SECRET || WEBHOOK_SECRET === 'whsec_placeholder') {
+    if (!sig || !webhookSecret) {
       res.status(400).send('Webhook not configured');
       return;
     }
-    event = stripe.webhooks.constructEvent(req.body, sig as string, WEBHOOK_SECRET);
+    event = stripe.webhooks.constructEvent(req.body, sig as string, webhookSecret);
   } catch (err: any) {
     console.error(`[Stripe Webhook Error] ${err.message}`);
     res.status(400).send(`Webhook Error: ${err.message}`);
     return;
   }
 
+  // Handle expired checkout session
+  if (event.type === 'checkout.session.expired') {
+    const session = event.data.object as Stripe.Checkout.Session;
+    await Transaction.findOneAndUpdate(
+      { stripeSessionId: session.id },
+      { status: 'failed' }
+    );
+  }
+
   // Handle successful checkout
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session;
-    const vendorId = session.metadata?.vendorId || session.client_reference_id;
 
-    if (vendorId) {
-      try {
-        const expiresAt = new Date();
-        expiresAt.setMonth(expiresAt.getMonth() + 1); // 1 month access
+    if (session.payment_status === 'paid') {
+      const existingTransaction = await Transaction.findOne({ stripeSessionId: session.id });
+      if (existingTransaction && existingTransaction.status === 'succeeded') {
+        res.status(200).json({ received: true });
+        return;
+      }
 
-        await User.findByIdAndUpdate(vendorId, {
-          subscriptionPlan: 'premium',
-          subscriptionExpiresAt: expiresAt,
-        });
+      const vendorId = session.metadata?.vendorId || session.client_reference_id;
 
-        await Transaction.findOneAndUpdate(
-          { stripeSessionId: session.id },
-          {
-            status: 'succeeded',
-            amount: (session.amount_total || 2999) / 100,
-            currency: session.currency || 'usd',
-          },
-          { upsert: true }
-        );
+      if (vendorId) {
+        try {
+          const expiresAt = new Date();
+          expiresAt.setMonth(expiresAt.getMonth() + 1); // 1 month access
 
-        console.log(`[Stripe] Successfully upgraded vendor ${vendorId} to Premium!`);
-      } catch (err) {
-        console.error('[Stripe Webhook] Error updating user:', err);
+          await User.findByIdAndUpdate(vendorId, {
+            subscriptionPlan: 'premium',
+            subscriptionExpiresAt: expiresAt,
+          });
+
+          await Transaction.findOneAndUpdate(
+            { stripeSessionId: session.id },
+            {
+              status: 'succeeded',
+              amount: (session.amount_total || 2999) / 100,
+              currency: session.currency || 'usd',
+            },
+            { upsert: true }
+          );
+
+          console.log(`[Stripe] Successfully upgraded vendor ${vendorId} to Premium!`);
+        } catch (err) {
+          console.error('[Stripe Webhook] Error updating user:', err);
+        }
       }
     }
   }
 
   res.status(200).json({ received: true });
-};
-
-// Development / Testing fallback verification: Only for local testing when stripe CLI webhook is unavailable
-export const verifyTestPayment = async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    if (!req.user || req.user.role !== 'vendor') {
-      res.status(403).json({ success: false, message: 'Vendor access required.' });
-      return;
-    }
-
-    const { sessionId } = req.body;
-    if (!sessionId) {
-      res.status(400).json({ success: false, message: 'Session ID is required.' });
-      return;
-    }
-
-    const transaction = await Transaction.findOne({
-      stripeSessionId: sessionId,
-      vendorId: req.user._id,
-    });
-
-    if (!transaction) {
-      res.status(404).json({ success: false, message: 'Transaction session record not found.' });
-      return;
-    }
-
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
-    if (session.payment_status !== 'paid' || session.metadata?.vendorId !== req.user._id.toString()) {
-      res.status(402).json({ success: false, message: 'Payment not completed.' });
-      return;
-    }
-
-    const expiresAt = new Date();
-    expiresAt.setMonth(expiresAt.getMonth() + 1);
-
-    req.user.subscriptionPlan = 'premium';
-    req.user.subscriptionExpiresAt = expiresAt;
-    await req.user.save();
-
-    transaction.status = 'succeeded';
-    await transaction.save();
-
-    res.status(200).json({
-      success: true,
-      message: 'Subscription successfully upgraded to Premium!',
-      user: {
-        subscriptionPlan: req.user.subscriptionPlan,
-        subscriptionExpiresAt: req.user.subscriptionExpiresAt,
-      },
-    });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
-  }
 };
