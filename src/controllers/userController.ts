@@ -1,4 +1,5 @@
 import { Response } from 'express';
+import mongoose from 'mongoose';
 import { User } from '../models/User.js';
 import { AuthRequest } from '../middlewares/auth.js';
 
@@ -11,8 +12,8 @@ export const toggleFavorite = async (req: AuthRequest, res: Response): Promise<v
     }
 
     const { itemId } = req.body;
-    if (!itemId) {
-      res.status(400).json({ success: false, message: 'Item ID is required.' });
+    if (!itemId || !mongoose.Types.ObjectId.isValid(itemId)) {
+      res.status(400).json({ success: false, message: 'Invalid or missing item ID (must be a valid ObjectId).' });
       return;
     }
 

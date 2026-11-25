@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { Order, IOrder, OrderStatus } from '../models/Order.js';
 import { MenuItem } from '../models/MenuItem.js';
 import { AuthRequest } from '../middlewares/auth.js';
+import { createOrderSchema } from '../validations/orderValidation.js';
 
 // Customer: Create a new pizza order
 export const createOrder = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -18,15 +19,14 @@ export const createOrder = async (req: AuthRequest, res: Response): Promise<void
       return;
     }
 
-    const { itemId, deliveryDate, deliveryAddress, message } = req.body;
-
-    if (!itemId || !deliveryDate || !deliveryAddress) {
-      res.status(400).json({
-        success: false,
-        message: 'Menu item, delivery date, and delivery address are required.',
-      });
+    const validation = createOrderSchema.safeParse(req.body);
+    if (!validation.success) {
+      const message = validation.error.issues.map((i) => i.message).join('. ');
+      res.status(400).json({ success: false, message });
       return;
     }
+
+    const { itemId, deliveryDate, deliveryAddress, message } = validation.data;
 
     const item = await MenuItem.findById(itemId);
     if (!item) {

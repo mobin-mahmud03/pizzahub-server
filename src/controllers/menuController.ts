@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { MenuItem, IMenuItem } from '../models/MenuItem.js';
 import { AuthRequest } from '../middlewares/auth.js';
 import { escapeRegex } from '../utils/escapeRegex.js';
+import { createMenuItemSchema, updateMenuItemSchema } from '../validations/menuValidation.js';
 
 const SEED_PIZZAS = [
   {
@@ -274,15 +275,14 @@ export const createMenuItem = async (req: AuthRequest, res: Response): Promise<v
       return;
     }
 
-    const { itemName, category, description, price, location, images } = req.body;
-
-    if (!itemName || !category || !description || price === undefined || !location || !images || !images.length) {
-      res.status(400).json({
-        success: false,
-        message: 'All fields (Item Name, Category, Description, Price, Location, Image) are required.',
-      });
+    const validation = createMenuItemSchema.safeParse(req.body);
+    if (!validation.success) {
+      const message = validation.error.issues.map((i) => i.message).join('. ');
+      res.status(400).json({ success: false, message });
       return;
     }
+
+    const { itemName, category, description, price, location, images } = validation.data;
 
     // Subscription Limit Check: Free plan max 3 active items. Premium: unlimited.
     if (req.user.subscriptionPlan !== 'premium') {
@@ -344,7 +344,14 @@ export const updateMenuItem = async (req: AuthRequest, res: Response): Promise<v
       return;
     }
 
-    const { itemName, category, description, price, location, images, status } = req.body;
+    const validation = updateMenuItemSchema.safeParse(req.body);
+    if (!validation.success) {
+      const message = validation.error.issues.map((i) => i.message).join('. ');
+      res.status(400).json({ success: false, message });
+      return;
+    }
+
+    const { itemName, category, description, price, location, images, status } = validation.data;
 
     if (itemName) item.itemName = itemName.trim();
     if (category) item.category = category;

@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { User, IUser, UserRole } from '../models/User.js';
 import { AuthRequest } from '../middlewares/auth.js';
+import { registerSchema } from '../validations/authValidation.js';
 
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 
@@ -24,29 +25,14 @@ const isValidPassword = (password: string): boolean => {
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, email, password, image, role, businessName } = req.body;
-
-    if (!name || !email || !password || !role) {
-      res.status(400).json({ success: false, message: 'Name, email, password, and role are required.' });
+    const validation = registerSchema.safeParse(req.body);
+    if (!validation.success) {
+      const message = validation.error.issues.map((i) => i.message).join('. ');
+      res.status(400).json({ success: false, message });
       return;
     }
 
-    // Role selection must strictly be Vendor or Customer
-    if (role !== 'vendor' && role !== 'customer') {
-      res.status(400).json({
-        success: false,
-        message: 'Invalid role. Public registration only allows "customer" or "vendor". Admin accounts cannot be created publicly.',
-      });
-      return;
-    }
-
-    if (!isValidPassword(password)) {
-      res.status(400).json({
-        success: false,
-        message: 'Password must be at least 6 characters long and contain at least one uppercase and one lowercase letter.',
-      });
-      return;
-    }
+    const { name, email, password, image, role, businessName } = validation.data;
 
     const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
