@@ -24,7 +24,10 @@ export const verifyToken = async (
     }
 
     const token = authHeader.split(' ')[1];
-    const secret = process.env.JWT_SECRET || 'pizzahub_super_secret_jwt_key_2026_change_in_production';
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      throw new Error('JWT_SECRET is required');
+    }
 
     const decoded = jwt.verify(token, secret) as JwtPayload;
     if (!decoded || !decoded.userId) {
@@ -44,6 +47,11 @@ export const verifyToken = async (
         message: 'Your account has been blocked. You cannot access protected features.',
       });
       return;
+    }
+
+    if (user.subscriptionPlan === 'premium' && user.subscriptionExpiresAt && user.subscriptionExpiresAt < new Date()) {
+      user.subscriptionPlan = 'free';
+      await user.save();
     }
 
     req.user = user;

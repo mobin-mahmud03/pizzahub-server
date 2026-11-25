@@ -1,3 +1,8 @@
+if (process.env.NODE_ENV === 'production') {
+  console.error('Cannot run seed script in production!');
+  process.exit(1);
+}
+
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';

@@ -62,15 +62,6 @@ IMGBB_API_KEY=your_imgbb_key
 
 ---
 
-## 🔑 Demo & Test Credentials
-- **Admin**: `admin@pizzahub.com` / `Admin@123456`
-- **Vendor (Premium)**: `mario@pizzahub.com` / `Vendor@123456`
-- **Vendor (Free)**: `luigi@pizzahub.com` / `Vendor@123456`
-- **Customer**: `customer@pizzahub.com` / `Customer@123456`
-- **Stripe Test Card**: `4242 4242 4242 4242`, Expiry: Any future date (e.g. `12/28`), CVC: `123`
-
----
-
 ## 🏃 Local Setup & Installation
 ```bash
 # 1. Install dependencies

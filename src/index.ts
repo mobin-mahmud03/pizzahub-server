@@ -15,7 +15,12 @@ import userRoutes from './routes/userRoutes.js';
 
 dotenv.config();
 
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET is required');
+}
+
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 5000;
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:3000';
 

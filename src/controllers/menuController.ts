@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import { MenuItem, IMenuItem } from '../models/MenuItem.js';
 import { AuthRequest } from '../middlewares/auth.js';
+import { escapeRegex } from '../utils/escapeRegex.js';
 
 const SEED_PIZZAS = [
   {
@@ -146,14 +147,15 @@ export const getMenuItems = async (req: Request, res: Response): Promise<void> =
     }
 
     if (location && location !== 'All') {
-      query.location = { $regex: location as string, $options: 'i' };
+      query.location = { $regex: escapeRegex(location as string), $options: 'i' };
     }
 
     if (search) {
+      const escapedSearch = escapeRegex(search as string);
       query.$or = [
-        { itemName: { $regex: search as string, $options: 'i' } },
-        { description: { $regex: search as string, $options: 'i' } },
-        { location: { $regex: search as string, $options: 'i' } },
+        { itemName: { $regex: escapedSearch, $options: 'i' } },
+        { description: { $regex: escapedSearch, $options: 'i' } },
+        { location: { $regex: escapedSearch, $options: 'i' } },
       ];
     }
 
@@ -222,10 +224,10 @@ export const getMenuItemById = async (req: Request, res: Response): Promise<void
 
     const item = await MenuItem.findById(id).populate(
       'vendorId',
-      'name businessName image email subscriptionPlan'
+      'name businessName image subscriptionPlan'
     );
 
-    if (!item) {
+    if (!item || item.status !== 'approved') {
       res.status(404).json({ success: false, message: 'Menu item not found.' });
       return;
     }

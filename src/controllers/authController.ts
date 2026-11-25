@@ -4,11 +4,14 @@ import jwt from 'jsonwebtoken';
 import { User, IUser, UserRole } from '../models/User.js';
 import { AuthRequest } from '../middlewares/auth.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'pizzahub_super_secret_jwt_key_2026_change_in_production';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 
 const generateToken = (userId: string, role: UserRole): string => {
-  return jwt.sign({ userId, role }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN as any });
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET is required');
+  }
+  return jwt.sign({ userId, role }, secret, { expiresIn: JWT_EXPIRES_IN as any });
 };
 
 // Password validation: min 6 chars, 1 uppercase, 1 lowercase
@@ -141,54 +144,6 @@ export const login = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
-export const googleAuth = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { name, email, image, role, googleId } = req.body;
-
-    if (!email || !name) {
-      res.status(400).json({ success: false, message: 'Google authentication data missing.' });
-      return;
-    }
-
-    let user = await User.findOne({ email: email.toLowerCase() });
-
-    if (user) {
-      if (user.isBlocked) {
-        res.status(403).json({ success: false, message: 'Your account has been blocked.' });
-        return;
-      }
-    } else {
-      const selectedRole = role === 'vendor' ? 'vendor' : 'customer';
-      user = await User.create({
-        name,
-        email: email.toLowerCase(),
-        image: image || '',
-        role: selectedRole,
-        businessName: selectedRole === 'vendor' ? `${name}'s Pizzeria` : '',
-        subscriptionPlan: 'free',
-        isBlocked: false,
-      });
-    }
-
-    const token = generateToken(user._id.toString(), user.role);
-
-    res.status(200).json({
-      success: true,
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        image: user.image,
-        role: user.role,
-        businessName: user.businessName,
-        subscriptionPlan: user.subscriptionPlan,
-      },
-    });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message || 'Google authentication failed.' });
-  }
-};
 
 export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
   try {

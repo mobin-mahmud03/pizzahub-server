@@ -3,6 +3,7 @@ import { User } from '../models/User.js';
 import { MenuItem } from '../models/MenuItem.js';
 import { Order } from '../models/Order.js';
 import { Transaction } from '../models/Transaction.js';
+import { escapeRegex } from '../utils/escapeRegex.js';
 
 // Admin: Overview Dashboard Statistics
 export const getAdminStats = async (req: Request, res: Response): Promise<void> => {
@@ -58,10 +59,11 @@ export const getAdminUsers = async (req: Request, res: Response): Promise<void> 
     }
 
     if (search) {
+      const escapedSearch = escapeRegex(search as string);
       query.$or = [
-        { name: { $regex: search as string, $options: 'i' } },
-        { email: { $regex: search as string, $options: 'i' } },
-        { businessName: { $regex: search as string, $options: 'i' } },
+        { name: { $regex: escapedSearch, $options: 'i' } },
+        { email: { $regex: escapedSearch, $options: 'i' } },
+        { businessName: { $regex: escapedSearch, $options: 'i' } },
       ];
     }
 
@@ -139,9 +141,10 @@ export const getAdminMenuItems = async (req: Request, res: Response): Promise<vo
     }
 
     if (search) {
+      const escapedSearch = escapeRegex(search as string);
       query.$or = [
-        { itemName: { $regex: search as string, $options: 'i' } },
-        { location: { $regex: search as string, $options: 'i' } },
+        { itemName: { $regex: escapedSearch, $options: 'i' } },
+        { location: { $regex: escapedSearch, $options: 'i' } },
       ];
     }
 

@@ -76,13 +76,11 @@ export const handleWebhook = async (req: Request, res: Response): Promise<void> 
   let event: Stripe.Event;
 
   try {
-    if (WEBHOOK_SECRET && WEBHOOK_SECRET !== 'whsec_placeholder' && sig) {
-      // Production verified webhook
-      event = stripe.webhooks.constructEvent(req.body, sig as string, WEBHOOK_SECRET);
-    } else {
-      // In development when testing without CLI tunnel
-      event = req.body;
+    if (!sig || !WEBHOOK_SECRET || WEBHOOK_SECRET === 'whsec_placeholder') {
+      res.status(400).send('Webhook not configured');
+      return;
     }
+    event = stripe.webhooks.constructEvent(req.body, sig as string, WEBHOOK_SECRET);
   } catch (err: any) {
     console.error(`[Stripe Webhook Error] ${err.message}`);
     res.status(400).send(`Webhook Error: ${err.message}`);
@@ -145,6 +143,12 @@ export const verifyTestPayment = async (req: AuthRequest, res: Response): Promis
 
     if (!transaction) {
       res.status(404).json({ success: false, message: 'Transaction session record not found.' });
+      return;
+    }
+
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    if (session.payment_status !== 'paid' || session.metadata?.vendorId !== req.user._id.toString()) {
+      res.status(402).json({ success: false, message: 'Payment not completed.' });
       return;
     }
 
