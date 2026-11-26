@@ -6,7 +6,6 @@ export type SubscriptionPlan = 'free' | 'premium';
 export interface IUser extends Document {
   name: string;
   email: string;
-  password?: string;
   image?: string;
   role: UserRole;
   isBlocked: boolean;
@@ -18,11 +17,12 @@ export interface IUser extends Document {
   updatedAt: Date;
 }
 
+// strict: false — Better Auth stores additional fields (emailVerified, accounts,
+// sessions, etc.) in the same 'users' collection. We must not strip them.
 const UserSchema = new Schema<IUser>(
   {
     name: { type: String, required: true, trim: true },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
-    password: { type: String },
     image: { type: String, default: '' },
     role: {
       type: String,
@@ -41,7 +41,11 @@ const UserSchema = new Schema<IUser>(
     subscriptionExpiresAt: { type: Date, default: null },
     favorites: [{ type: Schema.Types.ObjectId, ref: 'MenuItem', default: [] }],
   },
-  { timestamps: true }
+  // Point at the same collection Better Auth writes to.
+  // strict: false lets Mongoose leave Better Auth's own fields (emailVerified,
+  // updatedAt, etc.) untouched when we call .save() on a document.
+  { timestamps: true, strict: false }
 );
 
-export const User = mongoose.model<IUser>('User', UserSchema);
+// Third argument forces the collection name to 'users' (Better Auth's default).
+export const User = mongoose.model<IUser>('User', UserSchema, 'users');
