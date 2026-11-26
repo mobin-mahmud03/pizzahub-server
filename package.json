@@ -11,7 +11,12 @@
     "seed": "tsx src/seed.ts",
     "create-admin": "tsx src/createAdmin.ts"
   },
-  "keywords": ["pizza", "express", "mongodb", "stripe"],
+  "keywords": [
+    "pizza",
+    "express",
+    "mongodb",
+    "stripe"
+  ],
   "author": "PizzaHub Team",
   "license": "ISC",
   "dependencies": {
@@ -20,6 +25,7 @@
     "cors": "^2.8.6",
     "dotenv": "^18.0.10",
     "express": "^5.3.0",
+    "jose": "^6.2.18",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.12.3",
     "multer": "^2.5.0",
