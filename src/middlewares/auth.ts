@@ -1,15 +1,25 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
+import { jwtVerify, createRemoteJWKSet } from 'jose';
 import { User, IUser, UserRole } from '../models/User.js';
 
 export interface AuthRequest extends Request {
   user?: IUser;
 }
 
-interface JwtPayload {
-  userId: string;
-  role: UserRole;
-}
+// Cache the JWKS fetcher at module level — createRemoteJWKSet already caches
+// the key set internally and re-fetches only when a new kid is encountered.
+// CLIENT_URL must equal the deployed Next.js client URL (e.g. http://localhost:3000).
+// Better Auth's jwt() plugin exposes the JWKS at <baseURL>/api/auth/jwks.
+const getJWKS = () => {
+  const clientUrl = process.env.CLIENT_URL;
+  if (!clientUrl) {
+    throw new Error('CLIENT_URL environment variable is required for JWKS verification');
+  }
+  return createRemoteJWKSet(new URL(`${clientUrl}/api/auth/jwks`));
+};
+
+// Lazy singleton — created on first request so the env var is available.
+let JWKS: ReturnType<typeof createRemoteJWKSet> | null = null;
 
 export const verifyToken = async (
   req: AuthRequest,
@@ -24,18 +34,36 @@ export const verifyToken = async (
     }
 
     const token = authHeader.split(' ')[1];
-    const secret = process.env.JWT_SECRET;
-    if (!secret) {
-      throw new Error('JWT_SECRET is required');
+
+    // Initialise JWKS on first use
+    if (!JWKS) {
+      JWKS = getJWKS();
     }
 
-    const decoded = jwt.verify(token, secret) as JwtPayload;
-    if (!decoded || !decoded.userId) {
-      res.status(401).json({ success: false, message: 'Invalid or expired token.' });
+    let payload: Record<string, unknown>;
+    try {
+      const result = await jwtVerify(token, JWKS);
+      payload = result.payload as Record<string, unknown>;
+    } catch (err: any) {
+      // jose throws JWTExpired for expired tokens; everything else is invalid
+      if (err?.code === 'ERR_JWT_EXPIRED') {
+        res.status(401).json({ success: false, message: 'Session expired. Please log in again.' });
+      } else {
+        res.status(401).json({ success: false, message: 'Authentication failed. Invalid token.' });
+      }
       return;
     }
 
-    const user = await User.findById(decoded.userId).select('-password');
+    // Better Auth jwt() plugin sets sub = user id; fall back to a custom 'id' field
+    // if definePayload mapped it differently.
+    const userId = (payload.sub ?? payload.id) as string | undefined;
+    if (!userId) {
+      res.status(401).json({ success: false, message: 'Invalid token: missing user identifier.' });
+      return;
+    }
+
+    // Always load the user from the database — never trust role from the token.
+    const user = await User.findById(userId);
     if (!user) {
       res.status(401).json({ success: false, message: 'User account not found.' });
       return;
@@ -49,7 +77,12 @@ export const verifyToken = async (
       return;
     }
 
-    if (user.subscriptionPlan === 'premium' && user.subscriptionExpiresAt && user.subscriptionExpiresAt < new Date()) {
+    // Auto-downgrade expired premium subscriptions on the next authenticated request.
+    if (
+      user.subscriptionPlan === 'premium' &&
+      user.subscriptionExpiresAt &&
+      user.subscriptionExpiresAt < new Date()
+    ) {
       user.subscriptionPlan = 'free';
       await user.save();
     }
@@ -57,10 +90,6 @@ export const verifyToken = async (
     req.user = user;
     next();
   } catch (error: any) {
-    if (error.name === 'TokenExpiredError') {
-      res.status(401).json({ success: false, message: 'Session expired. Please log in again.' });
-      return;
-    }
     res.status(401).json({ success: false, message: 'Authentication failed. Invalid token.' });
   }
 };
