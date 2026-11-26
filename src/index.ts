@@ -16,8 +16,8 @@ import uploadRoutes from './routes/uploadRoutes.js';
 
 dotenv.config();
 
-if (!process.env.JWT_SECRET) {
-  throw new Error('JWT_SECRET is required');
+if (!process.env.CLIENT_URL) {
+  throw new Error('CLIENT_URL is required (used for JWKS endpoint and CORS)');
 }
 
 const app = express();

@@ -1,12 +1,13 @@
 import { Router } from 'express';
-import { register, login, getMe, updateProfile } from '../controllers/authController.js';
+import { getMe, updateProfile } from '../controllers/authController.js';
 import { verifyToken } from '../middlewares/auth.js';
-import { rateLimiter } from '../middlewares/rateLimiter.js';
+
+// Better Auth handles /register, /login, and /google via its own
+// Next.js API route handler at /api/auth/[...all].
+// The server only exposes profile endpoints that need DB-backed role data.
 
 const router = Router();
 
-router.post('/register', rateLimiter(10, 60000), register);
-router.post('/login', rateLimiter(10, 60000), login);
 router.get('/me', verifyToken, getMe);
 router.put('/profile', verifyToken, updateProfile);
 
