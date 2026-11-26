@@ -1,75 +1,364 @@
-# PizzaHub Backend API Server 🍕
+# 🍕 PizzaHub — Server
 
-PizzaHub is an enterprise-grade pizza ordering and delivery platform connecting artisanal neighborhood pizzerias with food lovers. Built with Express.js, TypeScript, MongoDB, JWT authentication, and Stripe payments.
+REST API backend for **PizzaHub**, a full-stack pizza marketplace where customers browse and order, vendors manage menus and subscriptions, and admins moderate the platform.
 
-## 🚀 Live Links & Repositories
-- **Server GitHub Repository**: `https://github.com/your-username/pizzahub-server`
-- **Client GitHub Repository**: `https://github.com/your-username/pizzahub-client`
-- **Live API Endpoint**: `https://pizzahub-server.onrender.com`
+Built with **Express 5**, **TypeScript**, **Mongoose**, and **Stripe** — running as an ES-module project with no transpile step in development (via `tsx`).
 
 ---
 
-## 🛠 Technology Stack & Dependencies
-- **Runtime & Language**: Node.js, TypeScript
-- **Framework**: Express.js
-- **Database**: MongoDB with Mongoose ODM
-- **Authentication**: JWT (JSON Web Tokens), bcryptjs
-- **Payment Processing**: Stripe Checkout with verified Webhook signatures
-- **Validation**: Zod schema validation
-- **Image Upload Support**: ImgBB API
-- **Dev Utilities**: `tsx` (zero-overhead execution), `dotenv`, `cors`, `@types/*`
+## ✨ Features
+
+| Area | What it does |
+|---|---|
+| **Auth** | JWT verification via Better Auth JWKS; `register`, `login`, profile endpoints |
+| **Role guards** | `verifyToken` → `requireRole(['vendor'])` middleware chain; 401 / 403 on failure |
+| **Menu** | CRUD for menu items; advanced search, category & location filtering, multi-column sort, pagination |
+| **Orders** | Customers place orders; vendors update status; admin views all |
+| **Reviews** | Customers leave reviews after ordering; average rating auto-updated |
+| **Stripe payments** | Checkout session creation; webhook-verified premium subscription activation |
+| **Admin panel** | User management (block/unblock), item moderation (approve/reject), transaction history |
+| **Image uploads** | Server-side proxy to ImgBB; keeps API key off the client |
+| **Rate limiting** | In-memory sliding-window limiter on auth routes (10 req / 60 s per IP) |
+| **Validation** | Zod schemas on all mutating endpoints; ObjectId sanitisation |
+| **Subscription enforcement** | Free vendors capped at 3 active items; premium auto-expires with downgrade |
+| **Offline fallback** | Menu endpoint returns seed data instantly when MongoDB is unreachable |
+| **Health check** | `GET /api/health` for uptime monitoring |
 
 ---
 
-## 🔐 Environment Variables
-Create a `.env` file in the root directory (never commit `.env` to GitHub):
-```env
-PORT=5000
-NODE_ENV=development
-CLIENT_URL=http://localhost:3000
+## 🛠 Technology Stack
 
-# Database
-MONGODB_URI=mongodb://127.0.0.1:27017/pizzahub
+### Runtime dependencies
 
-# Security & JWT
-JWT_SECRET=your_super_secret_jwt_key
-JWT_EXPIRES_IN=7d
+| Package | Version | Purpose |
+|---|---|---|
+| `express` | ^5.3.0 | HTTP server framework (ES modules, async error propagation) |
+| `mongoose` | ^9.12.3 | MongoDB ODM — models, queries, population |
+| `cors` | ^2.8.6 | Cross-origin resource sharing for the Next.js client |
+| `dotenv` | ^18.0.10 | Loads `.env` into `process.env` |
+| `stripe` | ^23.2.0 | Checkout session creation and webhook verification |
+| `zod` | ^4.6.7 | Runtime request-body validation and type inference |
+| `multer` | ^2.5.0 | Multipart/form-data parsing for image uploads |
+| `axios` | ^1.21.1 | Server-to-server HTTP calls (ImgBB proxy) |
+| `bcryptjs` | ^3.0.3 | Password hashing (legacy auth routes) |
+| `jsonwebtoken` | ^9.0.3 | JWT signing/verification (legacy; to be replaced by JWKS) |
 
-# Stripe
-STRIPE_SECRET_KEY=sk_test_...
-STRIPE_WEBHOOK_SECRET=whsec_...
-STRIPE_PREMIUM_PRICE_ID=price_...
+### Dev dependencies
 
-# ImgBB
-IMGBB_API_KEY=your_imgbb_key
+| Package | Purpose |
+|---|---|
+| `tsx` | On-the-fly TypeScript execution for `dev`, `seed`, `create-admin` scripts |
+| `typescript` | Static typing and compilation to `dist/` |
+| `@types/*` | Type definitions for Express, CORS, Multer, bcryptjs, jsonwebtoken, Node |
+
+---
+
+## 📁 Project Structure
+
+```
+src/
+├── config/
+│   └── db.ts                  # Mongoose connection
+├── controllers/
+│   ├── authController.ts      # register, login, getMe, updateProfile
+│   ├── menuController.ts      # CRUD + advanced search/sort
+│   ├── orderController.ts     # Order lifecycle
+│   ├── reviewController.ts    # Reviews + rating aggregation
+│   ├── stripeController.ts    # Checkout session + webhook handler
+│   ├── uploadController.ts    # ImgBB proxy
+│   ├── userController.ts      # Favourites, user queries
+│   └── adminController.ts     # Moderation endpoints
+├── middlewares/
+│   ├── auth.ts                # verifyToken, requireRole
+│   ├── rateLimiter.ts         # In-memory sliding window
+│   └── errorHandler.ts        # 404 + global error handler
+├── models/
+│   ├── User.ts
+│   ├── MenuItem.ts
+│   ├── Order.ts
+│   ├── Review.ts
+│   └── Transaction.ts
+├── routes/                    # One file per resource
+├── services/
+│   ├── stripeService.ts
+│   └── emailService.ts
+├── utils/
+│   ├── escapeRegex.ts         # Sanitises user input before $regex
+│   └── logger.ts
+├── validations/               # Zod schemas
+├── seed.ts                    # Demo data seeder
+├── createAdmin.ts             # Promote existing user to admin
+└── index.ts                   # App entry point
 ```
 
 ---
 
-## 🎯 Challenge Requirements Implementation
-### 1. Advanced Search and Sorting
-- Implemented in `src/controllers/menuController.ts` via endpoint `GET /api/menu`:
-  - `search`: Case-insensitive regex matching `itemName`, `description`, and `location`.
-  - `category`: Exact match filter for all 6 pizza categories.
-  - `location`: Area/City filter.
-  - `sort`: Supports `price_asc` (price low-to-high), `price_desc` (price high-to-low), and `rating`.
-  - Query example: `GET /api/menu?category=Classic+Pizzas&sort=price_asc&search=pepperoni`
+## 🚀 Installation
 
-### 2. JWT & Token Verification Middleware Flow
-- Implemented in `src/middlewares/auth.ts`:
-  - `verifyToken`: Extracts Bearer token from `Authorization` header, verifies validity & expiration using `jwt.verify()`, checks user account existence and checks `isBlocked`. Returns `401` for unauthorized/expired and `403` if blocked.
-  - `requireRole(roles)`: Enforces role-based permissions for `admin`, `vendor`, and `customer`.
+### Prerequisites
+
+- Node.js 20+
+- npm 10+
+- A running MongoDB instance (local or Atlas)
+- A Stripe account (test mode is fine)
+
+### Steps
+
+```bash
+# 1. Clone the repository
+git clone <SERVER_REPO_URL>
+cd pizzahub-server
+
+# 2. Install dependencies
+npm install
+
+# 3. Create your environment file
+cp .env.example .env
+# Edit .env and fill in all required values (see Environment Variables below)
+
+# 4. (Optional) Seed demo menu items
+npm run seed
+
+# 5. (Optional) Promote a signed-up user to admin
+ADMIN_EMAIL=you@example.com npm run create-admin
+```
+
+> [!IMPORTANT]
+> The seed script creates demo **menu items only**. User accounts must already exist (created via the client app). `create-admin` will print an error and exit if the email is not found — sign up through the website first.
 
 ---
 
-## 🏃 Local Setup & Installation
-```bash
-# 1. Install dependencies
-npm install
+## ▶️ Running Locally
 
-# 2. Seed initial data (Admin, vendors, 12+ pizzas, sample orders)
+```bash
+# Development (hot-reload via tsx watch)
+npm run dev
+
+# Production build
+npm run build      # compiles TypeScript → dist/
+npm start          # runs dist/index.js
+```
+
+The server listens on `http://localhost:5000` by default (configurable via `PORT`).
+
+---
+
+## 🌐 Links
+
+| Resource | URL |
+|---|---|
+| **Live API** | `<LIVE_API_URL>` |
+| **Client repository** | `<CLIENT_REPO_URL>` |
+| **Server repository** | `<SERVER_REPO_URL>` |
+
+---
+
+## 🔐 Environment Variables
+
+Copy `.env.example` to `.env` and fill in your own values. **Never commit `.env`.**
+
+| Variable | Used for |
+|---|---|
+| `PORT` | Port the Express server listens on |
+| `NODE_ENV` | `development` or `production` |
+| `CLIENT_URL` | Deployed client origin — used for CORS and the JWKS endpoint URL |
+| `MONGODB_URI` | Full MongoDB connection string (must point to the same DB as the client) |
+| `JWT_SECRET` | Signing secret for legacy JWT auth (will be removed after Better Auth migration) |
+| `JWT_EXPIRES_IN` | Token lifetime (e.g. `7d`) |
+| `STRIPE_SECRET_KEY` | Stripe secret key (`sk_test_…` for development) |
+| `STRIPE_WEBHOOK_SECRET` | Signing secret for Stripe webhook signature verification (`whsec_…`) |
+| `STRIPE_PREMIUM_PRICE_ID` | Stripe Price ID for the vendor premium plan |
+| `IMGBB_API_KEY` | API key for the ImgBB image hosting service |
+| `ADMIN_EMAIL` | Email of the user to promote when running `npm run create-admin` |
+| `ADMIN_NAME` | Display name used by the create-admin script |
+
+---
+
+## 🔎 Challenge 1 — Advanced Search & Sorting (`GET /api/menu`)
+
+### Endpoint
+
+```
+GET /api/menu?search=&category=&location=&sort=&page=&limit=
+```
+
+### Query parameters
+
+| Parameter | Type | Description |
+|---|---|---|
+| `search` | string | Free-text search across `itemName`, `description`, and `location` fields using a MongoDB `$regex` with special-character escaping |
+| `category` | string | Exact-match filter on `category` (e.g. `Classic Pizzas`, `Vegetarian Pizzas`) |
+| `location` | string | Case-insensitive partial-match filter on the `location` field |
+| `sort` | `price_asc` \| `price_desc` \| `rating` | Sort order. `price_asc` → `{ price: 1 }`, `price_desc` → `{ price: -1 }`, `rating` → `{ averageRating: -1 }`. Defaults to newest-first (`{ createdAt: -1 }`) |
+| `page` | number | Page number for pagination (default: `1`) |
+| `limit` | number | Items per page (default: `12`) |
+
+### Implementation flow
+
+```
+Request arrives
+  │
+  ├─ DB offline? → filter + sort in-memory seed array → respond immediately
+  │
+  └─ DB online →
+       1. Build Mongoose query object: { status: 'approved' }
+       2. Append category filter (exact match)
+       3. Append location filter ($regex, case-insensitive)
+       4. Append search filter ($or across itemName / description / location,
+          user input sanitised via escapeRegex() before $regex)
+       5. Resolve sort: price_asc | price_desc | rating | default newest
+       6. Run countDocuments(query) for pagination metadata
+       7. Run find(query).populate('vendorId', …).sort(…).skip(…).limit(…)
+       8. Respond: { success, data, pagination: { total, page, pages, limit } }
+```
+
+> [!NOTE]
+> `escapeRegex()` escapes all regex special characters in user-supplied strings before they are passed to MongoDB `$regex`, preventing regex-injection attacks.
+
+> [!TIP]
+> The featured-items endpoint (`GET /api/menu/featured`) applies an extra in-memory stable sort that promotes items from **premium vendors** to the top of the results, without affecting the overall ranking by rating.
+
+### Example
+
+```
+GET /api/menu?search=truffle&category=Specialty+%2F+Gourmet+Pizzas&sort=price_desc&page=1&limit=6
+```
+
+---
+
+## 🔑 Challenge 2 — JWT Verification Middleware
+
+Authentication is handled by a two-layer middleware: `verifyToken` authenticates the caller, and `requireRole` enforces the minimum permission level.
+
+### Middleware chain
+
+```
+Incoming request with  Authorization: Bearer <token>
+              │
+  ┌───────────▼────────────────────────────────────┐
+  │             verifyToken                         │
+  │                                                 │
+  │  1. Extract token from Authorization header     │
+  │     → 401 if missing or malformed               │
+  │                                                 │
+  │  2. Verify token signature                      │
+  │     Current:  jsonwebtoken.verify(token,        │
+  │               process.env.JWT_SECRET)           │
+  │     Planned:  jwtVerify(token,                  │
+  │               createRemoteJWKSet(               │
+  │                 CLIENT_URL + /api/auth/jwks))   │
+  │     → 401 on invalid or expired token           │
+  │                                                 │
+  │  3. Extract user id from payload (sub / id)     │
+  │                                                 │
+  │  4. Load User from MongoDB by id                │
+  │     → 401 if user not found                     │
+  │     Role is taken from the DATABASE RECORD,     │
+  │     never trusted from the token payload        │
+  │                                                 │
+  │  5. Check isBlocked                             │
+  │     → 403 if true                               │
+  │                                                 │
+  │  6. Check subscription expiry                   │
+  │     If premium plan has expired → downgrade     │
+  │     user.subscriptionPlan to 'free' and save    │
+  │                                                 │
+  │  7. Attach user to req.user, call next()        │
+  └───────────┬────────────────────────────────────┘
+              │
+  ┌───────────▼────────────────────────────────────┐
+  │          requireRole(['vendor'])  (optional)    │
+  │                                                 │
+  │  Checks req.user.role against allowed list      │
+  │  → 403 if role not permitted                    │
+  │  → next() if allowed                            │
+  └───────────┬────────────────────────────────────┘
+              │
+        Controller logic
+```
+
+### Response codes
+
+| Status | Condition |
+|---|---|
+| `401` | No `Authorization` header, malformed header, invalid/expired token, or user not found in DB |
+| `403` | Valid token but user is blocked (`isBlocked: true`), or user's role is not in the allowed list |
+| `200` | Authenticated and authorised; `req.user` populated from DB |
+
+### Better Auth JWKS migration (planned)
+
+When the client migrates to Better Auth (which issues JWKS-verifiable JWTs via the `jwt()` plugin), the server verification step changes from a shared secret to a remote JWKS lookup:
+
+```ts
+import { jwtVerify, createRemoteJWKSet } from 'jose';
+
+const JWKS = createRemoteJWKSet(
+  new URL(`${process.env.CLIENT_URL}/api/auth/jwks`)
+);
+
+// In verifyToken:
+const { payload } = await jwtVerify(token, JWKS);
+const userId = payload.sub ?? payload.id;
+```
+
+The rest of the middleware (DB load, role check, block check, expiry check) stays identical. `JWT_SECRET` and `JWT_EXPIRES_IN` are removed from the environment.
+
+---
+
+## 💳 Stripe Webhook Setup
+
+The webhook is the **only** way premium subscription status is activated — the checkout success page alone is never trusted.
+
+### Local development (Stripe CLI)
+
+```bash
+# 1. Install the Stripe CLI: https://stripe.com/docs/stripe-cli
+
+# 2. Log in
+stripe login
+
+# 3. Forward webhook events to the local server
+stripe listen --forward-to http://localhost:5000/api/stripe/webhook
+
+# 4. Copy the displayed signing secret and set it in .env:
+#    STRIPE_WEBHOOK_SECRET=whsec_...
+
+# 5. Trigger a test event (new terminal)
+stripe trigger checkout.session.completed
+```
+
+### Production (Stripe Dashboard)
+
+1. Go to **Stripe Dashboard → Developers → Webhooks → Add endpoint**.
+2. Set the endpoint URL to `https://<your-server-domain>/api/stripe/webhook`.
+3. Select the events to listen for:
+   - `checkout.session.completed`
+   - `checkout.session.expired`
+4. After saving, copy the **Signing secret** (`whsec_…`) and set it as `STRIPE_WEBHOOK_SECRET` in your server environment.
+
+> [!CAUTION]
+> The webhook route (`POST /api/stripe/webhook`) must receive the **raw request body** for Stripe's signature verification. It is registered **before** `express.json()` in `index.ts` using `express.raw({ type: 'application/json' })`. Never move it after the JSON middleware or webhook verification will always fail.
+
+> [!NOTE]
+> The server is idempotent for webhook retries: if a `checkout.session.completed` event arrives for a session that is already marked `succeeded` in the `transactions` collection, the handler returns `200` immediately without re-processing.
+
+### Webhook event handling
+
+| Stripe event | Server action |
+|---|---|
+| `checkout.session.completed` (paid) | Set `user.subscriptionPlan = 'premium'`, set `subscriptionExpiresAt` to +1 month, mark transaction `succeeded` |
+| `checkout.session.expired` | Mark transaction `failed` |
+
+---
+
+## 🛠 Utility Scripts
+
+```bash
+# Seed demo menu items into the database
 npm run seed
 
-# 3. Start development server
-npm run dev
+# Promote an existing user (must have signed up via the client) to admin role
+npm run create-admin
+# Set ADMIN_EMAIL in .env, or prefix the command:
+# ADMIN_EMAIL=you@example.com npm run create-admin
 ```
