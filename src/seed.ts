@@ -1,10 +1,10 @@
+// Production guard — must be first, before any imports that have side effects.
 if (process.env.NODE_ENV === 'production') {
-  console.error('Cannot run seed script in production!');
+  console.error('[Seeder] Cannot run seed script in production!');
   process.exit(1);
 }
 
 import mongoose from 'mongoose';
-import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
 import { User } from './models/User.js';
 import { MenuItem } from './models/MenuItem.js';
@@ -15,75 +15,58 @@ dotenv.config();
 
 const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/pizzahub';
 
+// ---------------------------------------------------------------------------
+// Configuration — set these to the emails of users who have already signed up
+// through the PizzaHub website (Better Auth manages their accounts).
+// ---------------------------------------------------------------------------
+const SEED_CONFIG = {
+  // A user with role 'admin' — promote them first with `npm run create-admin`
+  adminEmail: process.env.SEED_ADMIN_EMAIL || 'admin@example.com',
+  // Two users with role 'vendor' (they must have role='vendor' in the DB)
+  vendor1Email: process.env.SEED_VENDOR1_EMAIL || 'vendor1@example.com',
+  vendor2Email: process.env.SEED_VENDOR2_EMAIL || 'vendor2@example.com',
+  // A user with role 'customer'
+  customerEmail: process.env.SEED_CUSTOMER_EMAIL || 'customer@example.com',
+};
+
 const seedDatabase = async () => {
   try {
     await mongoose.connect(mongoUri);
     console.log('[Seeder] Connected to MongoDB...');
 
-    // Clear existing collections
-    await User.deleteMany({});
+    // Look up pre-existing Better Auth users by email.
+    const [admin, vendor1, vendor2, customer] = await Promise.all([
+      User.findOne({ email: SEED_CONFIG.adminEmail }),
+      User.findOne({ email: SEED_CONFIG.vendor1Email }),
+      User.findOne({ email: SEED_CONFIG.vendor2Email }),
+      User.findOne({ email: SEED_CONFIG.customerEmail }),
+    ]);
+
+    const missing: string[] = [];
+    if (!admin)    missing.push(`admin    → ${SEED_CONFIG.adminEmail}`);
+    if (!vendor1)  missing.push(`vendor1  → ${SEED_CONFIG.vendor1Email}`);
+    if (!vendor2)  missing.push(`vendor2  → ${SEED_CONFIG.vendor2Email}`);
+    if (!customer) missing.push(`customer → ${SEED_CONFIG.customerEmail}`);
+
+    if (missing.length > 0) {
+      console.error('\n[Seeder] The following users were not found in the database:');
+      missing.forEach((m) => console.error(`  • ${m}`));
+      console.error('\nPlease sign up through the PizzaHub website first, then re-run the seed.');
+      console.error('You can override the target emails via environment variables:');
+      console.error('  SEED_ADMIN_EMAIL, SEED_VENDOR1_EMAIL, SEED_VENDOR2_EMAIL, SEED_CUSTOMER_EMAIL\n');
+      process.exit(1);
+    }
+
+    // Clear menu data only — users are managed by Better Auth and must not be deleted.
     await MenuItem.deleteMany({});
     await Order.deleteMany({});
     await Transaction.deleteMany({});
-    console.log('[Seeder] Cleared previous records...');
+    console.log('[Seeder] Cleared previous menu items, orders, and transactions...');
 
-    const salt = await bcrypt.genSalt(10);
-    const adminPassword = await bcrypt.hash('Admin@123456', salt);
-    const vendorPassword = await bcrypt.hash('Vendor@123456', salt);
-    const customerPassword = await bcrypt.hash('Customer@123456', salt);
-
-    // 1. Create Admin
-    const admin = await User.create({
-      name: 'System Administrator',
-      email: 'admin@pizzahub.com',
-      password: adminPassword,
-      role: 'admin',
-      image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400',
-      isBlocked: false,
-      subscriptionPlan: 'free',
-    });
-
-    // 2. Create Vendors
-    const vendor1 = await User.create({
-      name: "Mario Rossi",
-      email: 'mario@pizzahub.com',
-      password: vendorPassword,
-      role: 'vendor',
-      businessName: "Mario's Authentic Pizzeria",
-      image: 'https://images.unsplash.com/photo-1583394838336-acd977736f90?w=400',
-      isBlocked: false,
-      subscriptionPlan: 'premium',
-      subscriptionExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-    });
-
-    const vendor2 = await User.create({
-      name: "Luigi Moretti",
-      email: 'luigi@pizzahub.com',
-      password: vendorPassword,
-      role: 'vendor',
-      businessName: "Luigi's Wood-Fired Slice",
-      image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400',
-      isBlocked: false,
-      subscriptionPlan: 'free',
-    });
-
-    // 3. Create Customer
-    const customer = await User.create({
-      name: 'John Doe',
-      email: 'customer@pizzahub.com',
-      password: customerPassword,
-      role: 'customer',
-      image: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400',
-      isBlocked: false,
-      subscriptionPlan: 'free',
-    });
-
-    console.log('[Seeder] Users created (Admin, Vendors, Customer)...');
-
-    // 4. Create Menu Items across all 6 required categories
+    // Seed menu items
     const menuItemsData = [
       {
-        vendorId: vendor1._id,
+        vendorId: vendor1!._id,
         itemName: 'Margherita Classica',
         category: 'Classic Pizzas',
         description: 'San Marzano tomato sauce, fresh buffalo mozzarella, fragrant sweet basil, extra virgin olive oil.',
@@ -98,7 +81,7 @@ const seedDatabase = async () => {
         numReviews: 24,
       },
       {
-        vendorId: vendor1._id,
+        vendorId: vendor1!._id,
         itemName: 'Pepperoni Inferno',
         category: 'Classic Pizzas',
         description: 'Loaded with hand-cut spicy pepperoni cups, mozzarella blend, crushed red pepper, and honey drizzle.',
@@ -113,7 +96,7 @@ const seedDatabase = async () => {
         numReviews: 31,
       },
       {
-        vendorId: vendor2._id,
+        vendorId: vendor2!._id,
         itemName: 'Garden Veggie Supreme',
         category: 'Vegetarian Pizzas',
         description: 'Roasted bell peppers, caramelized red onions, baby spinach, kalamata olives, button mushrooms, and fontina.',
@@ -128,114 +111,98 @@ const seedDatabase = async () => {
         numReviews: 18,
       },
       {
-        vendorId: vendor2._id,
+        vendorId: vendor2!._id,
         itemName: 'Quattro Formaggi Bianca',
         category: 'Vegetarian Pizzas',
         description: 'White garlic base, aged provolone, fior di latte, gorgonzola dolce, and freshly grated pecorino romano.',
         price: 18.25,
         location: 'Greenwich Village, NY',
-        images: [
-          'https://images.unsplash.com/photo-1573821663912-569905455b1c?w=800',
-        ],
+        images: ['https://images.unsplash.com/photo-1573821663912-569905455b1c?w=800'],
         status: 'approved',
         averageRating: 4.9,
         numReviews: 15,
       },
       {
-        vendorId: vendor1._id,
+        vendorId: vendor1!._id,
         itemName: 'Carnivore Meat Feast',
         category: 'Meat Lovers',
         description: 'Smoky bacon lardons, Italian spicy sausage, smoked ham, seasoned ground beef, and signature BBQ glaze.',
         price: 19.99,
         location: 'Downtown Brooklyn, NY',
-        images: [
-          'https://images.unsplash.com/photo-1541745537411-b8046dc6d66c?w=800',
-        ],
+        images: ['https://images.unsplash.com/photo-1541745537411-b8046dc6d66c?w=800'],
         status: 'approved',
         averageRating: 4.9,
         numReviews: 42,
       },
       {
-        vendorId: vendor1._id,
+        vendorId: vendor1!._id,
         itemName: 'Truffle Mushroom Gourmet',
         category: 'Specialty / Gourmet Pizzas',
         description: 'Wild forest chanterelles, porcini cream, white truffle oil, shaved parmigiano, and organic thyme.',
         price: 22.50,
         location: 'Downtown Brooklyn, NY',
-        images: [
-          'https://images.unsplash.com/photo-1593560708920-61dd98c46a4e?w=800',
-        ],
+        images: ['https://images.unsplash.com/photo-1593560708920-61dd98c46a4e?w=800'],
         status: 'approved',
         averageRating: 5.0,
         numReviews: 29,
       },
       {
-        vendorId: vendor2._id,
+        vendorId: vendor2!._id,
         itemName: 'Golden Garlic Parmesan Knots',
         category: 'Sides & Appetizers',
         description: '6 oven-baked dough knots tossed in roasted garlic herb butter, grated parmesan, with warm marinara dip.',
         price: 7.99,
         location: 'Greenwich Village, NY',
-        images: [
-          'https://images.unsplash.com/photo-1541592106381-b31e9677c0e5?w=800',
-        ],
+        images: ['https://images.unsplash.com/photo-1541592106381-b31e9677c0e5?w=800'],
         status: 'approved',
         averageRating: 4.6,
         numReviews: 19,
       },
       {
-        vendorId: vendor1._id,
+        vendorId: vendor1!._id,
         itemName: 'Crispy Buffalo Wings (8pcs)',
         category: 'Sides & Appetizers',
         description: 'Jumbo wings tossed in spicy tang Buffalo glaze, served with fresh celery sticks and homemade blue cheese dip.',
         price: 11.50,
         location: 'Downtown Brooklyn, NY',
-        images: [
-          'https://images.unsplash.com/photo-1567620832903-9fc6debc209f?w=800',
-        ],
+        images: ['https://images.unsplash.com/photo-1567620832903-9fc6debc209f?w=800'],
         status: 'approved',
         averageRating: 4.8,
         numReviews: 25,
       },
       {
-        vendorId: vendor1._id,
+        vendorId: vendor1!._id,
         itemName: 'Authentic Italian Tiramisu',
         category: 'Beverages & Desserts',
         description: 'Espresso-soaked savoiardi ladyfingers layered with rich mascarpone zabaglione and dusted with dark Valrhona cocoa.',
         price: 8.50,
         location: 'Downtown Brooklyn, NY',
-        images: [
-          'https://images.unsplash.com/photo-1571877227200-a0d98ea607e9?w=800',
-        ],
+        images: ['https://images.unsplash.com/photo-1571877227200-a0d98ea607e9?w=800'],
         status: 'approved',
         averageRating: 4.9,
         numReviews: 33,
       },
       {
-        vendorId: vendor2._id,
+        vendorId: vendor2!._id,
         itemName: 'Sparkling Blood Orange Aranciata',
         category: 'Beverages & Desserts',
         description: 'Chilled authentic San Pellegrino artisan sparkling soda made with Sicilian blood oranges (330ml).',
         price: 3.50,
         location: 'Greenwich Village, NY',
-        images: [
-          'https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=800',
-        ],
+        images: ['https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=800'],
         status: 'approved',
         averageRating: 4.7,
         numReviews: 12,
       },
       {
-        vendorId: vendor2._id,
+        vendorId: vendor2!._id,
         itemName: 'Rustic Prosciutto & Arugula',
         category: 'Specialty / Gourmet Pizzas',
         description: 'Thin crispy crust, fior di latte, aged 18-month Prosciutto di Parma, baby arugula, lemon glaze.',
         price: 21.00,
         location: 'Greenwich Village, NY',
-        images: [
-          'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=800',
-        ],
-        status: 'pending', // Seed one pending item for Admin review testing!
+        images: ['https://images.unsplash.com/photo-1513104890138-7c749659a591?w=800'],
+        status: 'pending', // One pending item so the admin dashboard has something to moderate.
         averageRating: 0,
         numReviews: 0,
       },
@@ -244,11 +211,11 @@ const seedDatabase = async () => {
     const createdItems = await MenuItem.insertMany(menuItemsData);
     console.log(`[Seeder] Seeded ${createdItems.length} menu items across all 6 categories...`);
 
-    // 5. Seed sample orders
+    // Seed sample orders against the existing customer account.
     await Order.create({
       itemId: createdItems[0]._id,
-      vendorId: vendor1._id,
-      customerId: customer._id,
+      vendorId: vendor1!._id,
+      customerId: customer!._id,
       deliveryDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
       deliveryAddress: '742 Evergreen Terrace, Brooklyn, NY',
       message: 'Please ring the buzzer for Apt 4B. Extra marinara if possible!',
@@ -264,8 +231,8 @@ const seedDatabase = async () => {
 
     await Order.create({
       itemId: createdItems[1]._id,
-      vendorId: vendor1._id,
-      customerId: customer._id,
+      vendorId: vendor1!._id,
+      customerId: customer!._id,
       deliveryDate: new Date(Date.now() - 48 * 60 * 60 * 1000),
       deliveryAddress: '742 Evergreen Terrace, Brooklyn, NY',
       message: 'Leave at front door.',
@@ -279,14 +246,14 @@ const seedDatabase = async () => {
         {
           status: 'accepted',
           timestamp: new Date(Date.now() - 47 * 60 * 60 * 1000),
-          note: 'Order accepted by Mario Rossi.',
+          note: `Order accepted by ${vendor1!.name}.`,
         },
       ],
     });
 
-    // 6. Seed sample transaction
+    // Seed a sample completed transaction for vendor1.
     await Transaction.create({
-      vendorId: vendor1._id,
+      vendorId: vendor1!._id,
       plan: 'premium',
       amount: 29.99,
       currency: 'usd',
@@ -296,12 +263,8 @@ const seedDatabase = async () => {
     });
 
     console.log('[Seeder] Database seeding completed successfully! ✨');
-    console.log('\n--- Test Credentials ---');
-    console.log('Admin:    admin@pizzahub.com    / Admin@123456');
-    console.log('Vendor 1: mario@pizzahub.com    / Vendor@123456 (Premium)');
-    console.log('Vendor 2: luigi@pizzahub.com    / Vendor@123456 (Free)');
-    console.log('Customer: customer@pizzahub.com / Customer@123456\n');
-
+    console.log('\n[Seeder] All users are managed by Better Auth.');
+    console.log('[Seeder] Sign in with the accounts you registered on the website.');
     process.exit(0);
   } catch (error) {
     console.error('[Seeder] Error during database seed:', error);
