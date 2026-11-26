@@ -148,8 +148,8 @@ The server listens on `http://localhost:5000` by default (configurable via `PORT
 | Resource | URL |
 |---|---|
 | **Live API** | `<LIVE_API_URL>` |
-| **Client repository** | `<CLIENT_REPO_URL>` |
-| **Server repository** | `<SERVER_REPO_URL>` |
+| **Client repository** | https://github.com/mobin-mahmud03/pizzahub-client |
+| **Server repository** | https://github.com/mobin-mahmud03/pizzahub-server |
 
 ---
 
