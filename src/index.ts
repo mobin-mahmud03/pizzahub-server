@@ -43,6 +43,21 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), handl
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Root route
+app.get('/', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'Welcome to PizzaHub API Server',
+    health: '/api/health',
+    endpoints: {
+      menu: '/api/menu',
+      orders: '/api/orders',
+      auth: '/api/auth/me',
+      stripe: '/api/stripe',
+    },
+  });
+});
+
 // Health Check
 app.get('/api/health', (req, res) => {
   res.status(200).json({
@@ -66,13 +81,19 @@ app.use('/api/upload', uploadRoutes);
 app.use(notFoundHandler);
 app.use(globalErrorHandler);
 
-// Start Server
-const startServer = async () => {
-  await connectDB();
-  await StripeWebhookEvent.createIndexes();
-  app.listen(PORT, () => {
-    console.log(`[PizzaHub Server] Running on http://localhost:${PORT}`);
-  });
-};
+// Connect DB before processing requests (critical for serverless like Vercel)
+connectDB().catch(console.error);
 
-startServer();
+// Start Server for persistent environments (Node / local / Render)
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  const startServer = async () => {
+    await connectDB();
+    await StripeWebhookEvent.createIndexes();
+    app.listen(PORT, () => {
+      console.log(`[PizzaHub Server] Running on http://localhost:${PORT}`);
+    });
+  };
+  startServer();
+}
+
+export default app;
