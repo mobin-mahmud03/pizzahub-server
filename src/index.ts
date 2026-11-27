@@ -1,8 +1,9 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import { connectDB } from './config/db.js';
 import { handleWebhook } from './controllers/stripeController.js';
+import { StripeWebhookEvent } from './models/StripeWebhookEvent.js';
 import { notFoundHandler, globalErrorHandler } from './middlewares/errorHandler.js';
 
 import authRoutes from './routes/authRoutes.js';
@@ -13,8 +14,6 @@ import adminRoutes from './routes/adminRoutes.js';
 import reviewRoutes from './routes/reviewRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
-
-dotenv.config();
 
 if (!process.env.CLIENT_URL) {
   throw new Error('CLIENT_URL is required (used for JWKS endpoint and CORS)');
@@ -70,6 +69,7 @@ app.use(globalErrorHandler);
 // Start Server
 const startServer = async () => {
   await connectDB();
+  await StripeWebhookEvent.createIndexes();
   app.listen(PORT, () => {
     console.log(`[PizzaHub Server] Running on http://localhost:${PORT}`);
   });

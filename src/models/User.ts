@@ -12,6 +12,9 @@ export interface IUser extends Document {
   businessName?: string;
   subscriptionPlan: SubscriptionPlan;
   subscriptionExpiresAt?: Date | null;
+  subscriptionStatus?: string;
+  stripeCustomerId?: string;
+  stripeSubscriptionId?: string;
   favorites: mongoose.Types.ObjectId[];
   createdAt: Date;
   updatedAt: Date;
@@ -39,6 +42,9 @@ const UserSchema = new Schema<IUser>(
       required: true,
     },
     subscriptionExpiresAt: { type: Date, default: null },
+    subscriptionStatus: { type: String, default: '' },
+    stripeCustomerId: { type: String, default: '', index: true },
+    stripeSubscriptionId: { type: String, default: '', index: true },
     favorites: [{ type: Schema.Types.ObjectId, ref: 'MenuItem', default: [] }],
   },
   // Point at the same collection Better Auth writes to.

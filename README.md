@@ -15,7 +15,7 @@ Built with **Express 5**, **TypeScript**, **Mongoose**, and **Stripe** — runni
 | **Menu** | CRUD for menu items; advanced search, category & location filtering, multi-column sort, pagination |
 | **Orders** | Customers place orders; vendors update status; admin views all |
 | **Reviews** | Customers leave reviews after ordering; average rating auto-updated |
-| **Stripe payments** | Checkout session creation; webhook-verified premium subscription activation |
+| **Stripe payments** | Recurring monthly Checkout subscriptions; webhook-verified Premium activation and renewal |
 | **Admin panel** | User management (block/unblock), item moderation (approve/reject), transaction history |
 | **Image uploads** | Server-side proxy to ImgBB; keeps API key off the client |
 | **Rate limiting** | In-memory sliding-window limiter on auth routes (10 req / 60 s per IP) |
@@ -167,7 +167,7 @@ Copy `.env.example` to `.env` and fill in your own values. **Never commit `.env`
 | `JWT_EXPIRES_IN` | Token lifetime (e.g. `7d`) |
 | `STRIPE_SECRET_KEY` | Stripe secret key (`sk_test_…` for development) |
 | `STRIPE_WEBHOOK_SECRET` | Signing secret for Stripe webhook signature verification (`whsec_…`) |
-| `STRIPE_PREMIUM_PRICE_ID` | Stripe Price ID for the vendor premium plan |
+| `STRIPE_PREMIUM_PRICE_ID` | Active monthly recurring Price ID configured in Stripe |
 | `IMGBB_API_KEY` | API key for the ImgBB image hosting service |
 | `ADMIN_EMAIL` | Email of the user to promote when running `npm run create-admin` |
 | `ADMIN_NAME` | Display name used by the create-admin script |
@@ -307,7 +307,7 @@ The rest of the middleware (DB load, role check, block check, expiry check) stay
 
 ## 💳 Stripe Webhook Setup
 
-The webhook is the **only** way premium subscription status is activated — the checkout success page alone is never trusted.
+Subscription state is activated from verified Stripe data only. The success page sends its Checkout Session ID to the authenticated backend, which retrieves the session and subscription from Stripe before updating the vendor.
 
 ### Local development (Stripe CLI)
 
@@ -323,8 +323,8 @@ stripe listen --forward-to http://localhost:5000/api/stripe/webhook
 # 4. Copy the displayed signing secret and set it in .env:
 #    STRIPE_WEBHOOK_SECRET=whsec_...
 
-# 5. Trigger a test event (new terminal)
-stripe trigger checkout.session.completed
+# 5. Complete a test subscription checkout in the client.
+#    Stripe CLI forwards the resulting webhook events to the local server.
 ```
 
 ### Production (Stripe Dashboard)
@@ -334,20 +334,31 @@ stripe trigger checkout.session.completed
 3. Select the events to listen for:
    - `checkout.session.completed`
    - `checkout.session.expired`
+   - `checkout.session.async_payment_succeeded`
+   - `checkout.session.async_payment_failed`
+   - `invoice.paid`
+   - `invoice.payment_failed`
+   - `customer.subscription.created`
+   - `customer.subscription.updated`
+   - `customer.subscription.deleted`
 4. After saving, copy the **Signing secret** (`whsec_…`) and set it as `STRIPE_WEBHOOK_SECRET` in your server environment.
 
 > [!CAUTION]
 > The webhook route (`POST /api/stripe/webhook`) must receive the **raw request body** for Stripe's signature verification. It is registered **before** `express.json()` in `index.ts` using `express.raw({ type: 'application/json' })`. Never move it after the JSON middleware or webhook verification will always fail.
 
 > [!NOTE]
-> The server is idempotent for webhook retries: if a `checkout.session.completed` event arrives for a session that is already marked `succeeded` in the `transactions` collection, the handler returns `200` immediately without re-processing.
+> Processed Stripe event IDs are stored uniquely. Repeated deliveries are acknowledged without applying the same event twice; failed processing returns a server error so Stripe can retry.
 
 ### Webhook event handling
 
 | Stripe event | Server action |
 |---|---|
-| `checkout.session.completed` (paid) | Set `user.subscriptionPlan = 'premium'`, set `subscriptionExpiresAt` to +1 month, mark transaction `succeeded` |
-| `checkout.session.expired` | Mark transaction `failed` |
+| `checkout.session.completed` (paid) | Verify the subscription is active, save the Stripe customer/subscription IDs, and activate Premium through the current billing period |
+| `invoice.paid` | Extend Premium through the paid subscription period |
+| `invoice.payment_failed` | Mark the subscription `past_due`; keep already-paid access through its expiration |
+| `customer.subscription.updated` | Synchronize status and paid-through period |
+| `customer.subscription.deleted` | Downgrade the vendor and clear the Premium expiration |
+| `checkout.session.expired`, `checkout.session.async_payment_failed` | Mark the pending transaction `failed` |
 
 ---
 
