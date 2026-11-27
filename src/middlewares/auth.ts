@@ -63,7 +63,11 @@ export const verifyToken = async (
     }
 
     // Always load the user from the database — never trust role from the token.
-    const user = await User.findById(userId);
+    // Better Auth stores _id (and sometimes an 'id' string field). Query both to be safe.
+    let user = await User.findById(userId);
+    if (!user) {
+      user = await User.findOne({ id: userId });
+    }
     if (!user) {
       res.status(401).json({ success: false, message: 'User account not found.' });
       return;

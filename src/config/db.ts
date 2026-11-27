@@ -1,11 +1,21 @@
 import mongoose from 'mongoose';
 
+import dns from 'node:dns';
+
+if (process.env.NODE_ENV !== 'production') {
+  dns.setServers(['8.8.8.8', '1.1.1.1']);
+}
+
 export const connectDB = async (): Promise<void> => {
+  const mongoUri = process.env.MONGODB_URI;
+  if (!mongoUri) {
+    console.error('[Database] MONGODB_URI is not set. Check that server/.env exists and the server was restarted.');
+    return;
+  }
   try {
-    const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/pizzahub';
-    await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 3000 });
-    console.log(`[Database] MongoDB connected successfully to ${mongoUri}`);
+    await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 10000 });
+    console.log('[Database] MongoDB connected successfully');
   } catch (error) {
-    console.warn('[Database] Local MongoDB is currently offline. Server will start and connect once MongoDB service is running.');
+    console.error('[Database] Connection failed:', (error as Error).message);
   }
 };
